@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -13,7 +12,6 @@ import (
 	"github.com/ninjasphere/gestic-tools/go-gestic-sdk"
 	"github.com/ninjasphere/go-ninja/api"
 	"github.com/ninjasphere/go-ninja/config"
-	"github.com/ninjasphere/go-ninja/model"
 	"github.com/ninjasphere/go-uber"
 	"github.com/ninjasphere/sphere-go-led-controller/fonts/O4b03b"
 	"github.com/ninjasphere/sphere-go-led-controller/util"
@@ -30,11 +28,12 @@ var imageNoSurge = util.LoadImage(util.ResolveImagePath("no_surge.gif"))
 var imageLogo = util.LoadImage(util.ResolveImagePath("logo.png"))
 
 var confirmDeadTime = config.MustDuration("uber.request.deadTime")
-var confirmTimeout = config.MustDuration("uber.request.confirmTimeout")
 var closeOnDeadTap = config.MustBool("uber.request.closeOnDeadTap")
 
-var images map[string]util.Image
+var stateImages map[string]util.Image
+var stateImageNames []string
 
+// loadImages saves the PNG and GIF files in the images directory into the stateImages map
 func loadImages() {
 	files, err := ioutil.ReadDir("./images")
 
@@ -42,7 +41,7 @@ func loadImages() {
 		panic("Couldn't load images: " + err.Error())
 	}
 
-	images = make(map[string]util.Image)
+	stateImages = make(map[string]util.Image)
 
 	for _, f := range files {
 
@@ -50,28 +49,26 @@ func loadImages() {
 			name := strings.TrimSuffix(strings.TrimSuffix(f.Name(), ".png"), ".gif")
 
 			log.Infof("Found state image: " + name)
-			images[name] = util.LoadImage(util.ResolveImagePath("/" + f.Name()))
-
-			states = append(states, name)
+			// TODO - check; I don't think we need the "/"
+			stateImages[name] = util.LoadImage(util.ResolveImagePath("/" + f.Name()))
+			// also save names of images used as keys in images map
+			stateImageNames = append(stateImageNames, name)
 		}
-
 	}
 }
 
+// DemoPane stores the data we want to access.
+// The struct doesn't need any particular fields but must implement the remote.pane interface functions
 type DemoPane struct {
-	siteModel *ninja.ServiceClient
-	site      *model.Site
-
 	lastTap       time.Time
 	lastDoubleTap time.Time
 
-	intro        bool
+	displayingIntro bool
 	introTimeout *time.Timer
 
 	visible        bool
 	visibleTimeout *time.Timer
 
-	staleDataTimeout *time.Timer
 	updateTimer      *time.Timer
 
 	keepAwake        bool
@@ -86,10 +83,11 @@ type DemoPane struct {
 	f      float64
 }
 
+// NewDemoPane creates a DemoPane with the data and timers initialised
+// It doesn't need to do much more than create a struct if you want
 func NewDemoPane(conn *ninja.Connection) *DemoPane {
 
 	pane := &DemoPane{
-		siteModel: conn.GetServiceClient("$home/services/SiteModel"),
 		lastTap:   time.Now(),
 		number:    0,
 		f:         0.0,
@@ -109,7 +107,7 @@ func NewDemoPane(conn *ninja.Connection) *DemoPane {
 	})
 
 	pane.introTimeout = time.AfterFunc(0, func() {
-		pane.intro = false
+		pane.displayingIntro = false
 	})
 
 	pane.updateTimer = time.AfterFunc(0, func() {
@@ -151,6 +149,7 @@ func (p *DemoPane) UpdateData(once bool) error {
 
 // Gesture is called by the system when the LED matrix receives any kind of gesture
 func (p *DemoPane) Gesture(gesture *gestic.GestureMessage) {
+	log.Infof("%v gesture received", gesture.Gesture.Gesture.String())
 
 	if p.requestPane.IsEnabled() {
 		p.requestPane.Gesture(gesture)
@@ -163,9 +162,9 @@ func (p *DemoPane) Gesture(gesture *gestic.GestureMessage) {
 		log.Infof("Tap!")
 
 		p.number++
-		p.number %= len(states)
+		p.number %= len(stateImageNames)
 		// TODO: state for main pane... remove requestPane altogether
-		p.requestPane.updateState(states[p.number])
+		p.requestPane.updateState(stateImageNames[p.number])
 
 		p.test = true
 
@@ -200,57 +199,48 @@ func (p *DemoPane) Gesture(gesture *gestic.GestureMessage) {
 		//		p.number = 0
 		go p.UpdateData(true)
 	}
-
 }
 
+// KeepAwake is needed as it's part of the remote.pane interface
 func (p *DemoPane) KeepAwake() bool {
-	if p.requestPane.IsEnabled() {
-		return true
-	}
-
-	// TODO: Screen timeouts... 10min on press etc...
 	return true
 }
 
-// IsEnabled is needed as it's part of the interface
+// IsEnabled is needed as it's part of the remote.pane interface
 func (p *DemoPane) IsEnabled() bool {
 	return true
 }
 
 // Render is called by the system repeatedly when the pane is visible
+// It should return the RGBA image to be rendered on the LED matrix
 func (p *DemoPane) Render() (*image.RGBA, error) {
-
-	//	log.Infof("Rendering UberPane (visible?) %v", p.visible)
+	//	log.Infof("Rendering DemoPane (visible = %v)", p.visible)
 	p.visibleTimeout.Reset(visibleTimeout)
-
-	if p.requestPane.IsEnabled() {
-		return p.requestPane.Render()
-	}
 
 	if !p.visible {
 		p.visible = true
-		p.intro = true
+		p.displayingIntro = true
 
 		p.introTimeout.Reset(introDuration)
 
 		go p.UpdateData(false)
 	}
 
-	//	if p.intro || p.times == nil {
-	if p.intro {
-		//		log.Infof("intro, getnextframe returning...")
+	if p.displayingIntro {
 		return imageLogo.GetNextFrame(), nil
 	}
 
 	// img here is an empty 16*16 RGBA image for the Draw function to draw into
 	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
 
-	stateImg, ok := images[states[p.number]]
-	//	log.Infof("rendering %s", states[p.number])
-
+	// set one of the images loaded at the start to be displayed
+	// (p.number is just an index to change so we can see different images)
+	stateImg, ok := stateImages[stateImageNames[p.number]]
 	if !ok {
-		panic("Unknown state")
+		panic("Unknown state/image")
 	}
+	// Draw (built-in Go function) draws the frame from stateImg into the img 'image' starting at 4th parameter, "Over" the top
+	draw.Draw(img, img.Bounds(), stateImg.GetNextFrame(), image.Point{0, 0}, draw.Over)
 
 	//	drawText := func(text string, col color.RGBA, top int, offsetY int) {
 	//		width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
@@ -258,8 +248,6 @@ func (p *DemoPane) Render() (*image.RGBA, error) {
 	//
 	//		O4b03b.Font.DrawString(img, start, top, text, col)
 	//	}
-	// Draw (built-in Go function) draws the frame from stateImg into the img 'image' starting at 4th parameter, "Over" the top
-	draw.Draw(img, img.Bounds(), stateImg.GetNextFrame(), image.Point{0, 0}, draw.Over)
 
 	//	img = image.NewRGBA(image.Rect(0, 0, 16, 16))
 	/*draw.Draw(frame, frame.Bounds(), &image.Uniform{color.RGBA{
@@ -289,6 +277,7 @@ func (p *DemoPane) Render() (*image.RGBA, error) {
 
 	//	draw.Draw(img, img.Bounds(), border.GetNextFrame(), image.Point{0, 0}, draw.Over)
 
+	// return the image we've created by drawing to it
 	return img, nil
 }
 
@@ -310,45 +299,45 @@ type RequestPane struct {
 
 func (p *RequestPane) Gesture(gesture *gestic.GestureMessage) {
 
-	if gesture.Tap.Active() && time.Since(p.parent.lastTap) > tapInterval {
-
-		p.parent.lastTap = time.Now()
-
-		if time.Since(p.activeSince) < confirmDeadTime {
-
-			log.Infof("Dead tap")
-
-			if closeOnDeadTap {
-				log.Infof("Closing on dead tap")
-				p.active = false
-			}
-
-			return
-		}
-
-		log.Infof("Request Tap!")
-
-		if p.finished { // Tap to close after a failed booking
-			log.Infof("Closing failed request")
-			p.active = false
-			return
-		}
-
-		if p.state == "confirm_booking" {
-			log.Infof("Booking!")
-		}
-
-	}
-
-	if gesture.DoubleTap.Active() && time.Since(p.parent.lastDoubleTap) > tapInterval {
-		p.parent.lastDoubleTap = time.Now()
-
-		log.Infof("Request Double Tap!")
-
-		if p.state == "accepted" || p.state == "processing" {
-			log.Infof("Cancelling!")
-		}
-	}
+//	if gesture.Tap.Active() && time.Since(p.parent.lastTap) > tapInterval {
+//
+//		p.parent.lastTap = time.Now()
+//
+//		if time.Since(p.activeSince) < confirmDeadTime {
+//
+//			log.Infof("Dead tap")
+//
+//			if closeOnDeadTap {
+//				log.Infof("Closing on dead tap")
+//				p.active = false
+//			}
+//
+//			return
+//		}
+//
+//		log.Infof("Request Tap!")
+//
+//		if p.finished { // Tap to close after a failed booking
+//			log.Infof("Closing failed request")
+//			p.active = false
+//			return
+//		}
+//
+//		if p.state == "confirm_booking" {
+//			log.Infof("Booking!")
+//		}
+//
+//	}
+//
+//	if gesture.DoubleTap.Active() && time.Since(p.parent.lastDoubleTap) > tapInterval {
+//		p.parent.lastDoubleTap = time.Now()
+//
+//		log.Infof("Request Double Tap!")
+//
+//		if p.state == "accepted" || p.state == "processing" {
+//			log.Infof("Cancelling!")
+//		}
+//	}
 
 }
 
@@ -360,25 +349,21 @@ func (p *RequestPane) updateState(state string) {
 
 	p.state = state
 
-	switch state {
-	case "no_drivers_available":
-		fallthrough
-	case "driver_canceled":
-		fallthrough
-	case "rider_canceled":
-		fallthrough
-	case "error":
-		p.finished = true
-	case "completed":
-		go func() {
-			time.Sleep(time.Second * 5)
-			p.active = false
-		}()
-	}
-}
-
-func (p *RequestPane) Locked() bool {
-	return p.state == "confirm_booking"
+//	switch state {
+//	case "no_drivers_available":
+//		fallthrough
+//	case "driver_canceled":
+//		fallthrough
+//	case "rider_canceled":
+//		fallthrough
+//	case "error":
+//		p.finished = true
+//	case "completed":
+//		go func() {
+//			time.Sleep(time.Second * 5)
+//			p.active = false
+//		}()
+//	}
 }
 
 func (p *RequestPane) Render() (*image.RGBA, error) {
@@ -386,7 +371,7 @@ func (p *RequestPane) Render() (*image.RGBA, error) {
 
 	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
 
-	stateImg, ok := images[p.state]
+	stateImg, ok := stateImages[p.state]
 
 	if !ok {
 		panic("Unknown uber request state: " + p.state)
@@ -401,28 +386,28 @@ func (p *RequestPane) Render() (*image.RGBA, error) {
 	//
 	draw.Draw(img, img.Bounds(), stateImg.GetNextFrame(), image.Point{0, 0}, draw.Over)
 
-	switch p.state {
-	case "confirm_booking":
-		var border util.Image
-
-		if p.surgeMultiplier > 1 {
-
-			stateImg, _ = images["confirm_booking_surge"]
-
-			drawText(fmt.Sprintf("%.1fx", p.surgeMultiplier), color.RGBA{69, 175, 249, 255}, 9, -1)
-
-			border = imageSurge
-		} else {
-			border = imageNoSurge
-		}
-
-		draw.Draw(img, img.Bounds(), border.GetNextFrame(), image.Point{0, 0}, draw.Over)
-		//		case "accepted":
-		//			if p.request.getRequest().ETA > 0 {
-		//				drawText(fmt.Sprintf("%dm", p.request.getRequest().ETA), color.RGBA{253, 151, 32, 255}, 9, 0)
-		//			}
-		//			drawText(fmt.Sprintf("%dm", p.request.getRequest()), color.RGBA{69, 175, 249, 255}, 9)
-	}
+//	switch p.state {
+//	case "confirm_booking":
+//		var border util.Image
+//
+//		if p.surgeMultiplier > 1 {
+//
+//			stateImg, _ = stateImages["confirm_booking_surge"]
+//
+//			drawText(fmt.Sprintf("%.1fx", p.surgeMultiplier), color.RGBA{69, 175, 249, 255}, 9, -1)
+//
+//			border = imageSurge
+//		} else {
+//			border = imageNoSurge
+//		}
+//
+//		draw.Draw(img, img.Bounds(), border.GetNextFrame(), image.Point{0, 0}, draw.Over)
+//		//		case "accepted":
+//		//			if p.request.getRequest().ETA > 0 {
+//		//				drawText(fmt.Sprintf("%dm", p.request.getRequest().ETA), color.RGBA{253, 151, 32, 255}, 9, 0)
+//		//			}
+//		//			drawText(fmt.Sprintf("%dm", p.request.getRequest()), color.RGBA{69, 175, 249, 255}, 9)
+//	}
 
 	//	drawText := func(text string, col color.RGBA, top int) {
 	//		width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)

@@ -12,8 +12,6 @@ import (
 
 var info = ninja.LoadModuleInfo("./package.json")
 
-var states []string
-
 // init is a Go standard that runs first
 func init() {
 	// TODO: put images in app, get pane to be able to see app's data
@@ -52,6 +50,8 @@ func (a *App) Start(cfg *RuntimeConfig) error {
 
 	// Export our pane over the TCP connection we just made
 	a.led = remote.NewMatrix(pane, conn)
+
+	// TODO: try a second NewMatrix - see if we can swipe between them
 
 	return nil
 }
