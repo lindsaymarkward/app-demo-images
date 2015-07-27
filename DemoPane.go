@@ -6,13 +6,12 @@ import (
 	"image/draw"
 	"io/ioutil"
 	"strings"
-	"sync"
 	"time"
 
+	"fmt"
 	"github.com/ninjasphere/gestic-tools/go-gestic-sdk"
 	"github.com/ninjasphere/go-ninja/api"
 	"github.com/ninjasphere/go-ninja/config"
-	"github.com/ninjasphere/go-uber"
 	"github.com/ninjasphere/sphere-go-led-controller/fonts/O4b03b"
 	"github.com/ninjasphere/sphere-go-led-controller/util"
 )
@@ -23,12 +22,8 @@ var introDuration = config.MustDuration("uber.introDuration")
 var visibleTimeout = config.MustDuration("uber.visibilityTimeout") // Time between frames rendered before we reset the ui.
 var updateInterval = config.MustDuration("uber.updateInterval")
 
-var imageSurge = util.LoadImage(util.ResolveImagePath("surge.gif"))
-var imageNoSurge = util.LoadImage(util.ResolveImagePath("no_surge.gif"))
 var imageLogo = util.LoadImage(util.ResolveImagePath("logo.png"))
-
-var confirmDeadTime = config.MustDuration("uber.request.deadTime")
-var closeOnDeadTap = config.MustBool("uber.request.closeOnDeadTap")
+var border = util.LoadImage(util.ResolveImagePath("imageSurge.png"))
 
 var stateImages map[string]util.Image
 var stateImageNames []string
@@ -64,17 +59,15 @@ type DemoPane struct {
 	lastDoubleTap time.Time
 
 	displayingIntro bool
-	introTimeout *time.Timer
+	introTimeout    *time.Timer
 
 	visible        bool
 	visibleTimeout *time.Timer
 
-	updateTimer      *time.Timer
+	updateTimer *time.Timer
 
 	keepAwake        bool
 	keepAwakeTimeout *time.Timer
-
-	requestPane *RequestPane
 
 	// TODO: can data be stored in app, not pane? - Just pass app to NewDemoPane, I think
 	myText string
@@ -88,15 +81,12 @@ type DemoPane struct {
 func NewDemoPane(conn *ninja.Connection) *DemoPane {
 
 	pane := &DemoPane{
-		lastTap:   time.Now(),
-		number:    0,
-		f:         0.0,
+		lastTap: time.Now(),
+		number:  0,
+		f:       0.0,
 	}
 
 	pane.test = false
-	pane.requestPane = &RequestPane{
-		parent: pane,
-	}
 
 	// TODO: figure these timers out - how do they work?
 
@@ -151,11 +141,6 @@ func (p *DemoPane) UpdateData(once bool) error {
 func (p *DemoPane) Gesture(gesture *gestic.GestureMessage) {
 	log.Infof("%v gesture received", gesture.Gesture.Gesture.String())
 
-	if p.requestPane.IsEnabled() {
-		p.requestPane.Gesture(gesture)
-		return
-	}
-
 	if gesture.Tap.Active() && time.Since(p.lastTap) > tapInterval {
 		p.lastTap = time.Now()
 
@@ -163,8 +148,6 @@ func (p *DemoPane) Gesture(gesture *gestic.GestureMessage) {
 
 		p.number++
 		p.number %= len(stateImageNames)
-		// TODO: state for main pane... remove requestPane altogether
-		p.requestPane.updateState(stateImageNames[p.number])
 
 		p.test = true
 
@@ -242,185 +225,37 @@ func (p *DemoPane) Render() (*image.RGBA, error) {
 	// Draw (built-in Go function) draws the frame from stateImg into the img 'image' starting at 4th parameter, "Over" the top
 	draw.Draw(img, img.Bounds(), stateImg.GetNextFrame(), image.Point{0, 0}, draw.Over)
 
-	//	drawText := func(text string, col color.RGBA, top int, offsetY int) {
-	//		width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
-	//		start := int(16 - width + offsetY)
-	//
-	//		O4b03b.Font.DrawString(img, start, top, text, col)
-	//	}
-
-	//	img = image.NewRGBA(image.Rect(0, 0, 16, 16))
-	/*draw.Draw(frame, frame.Bounds(), &image.Uniform{color.RGBA{
-		R: 0,
-		G: 0,
-		B: 0,
-		A: 255,
-	}}, image.ZP, draw.Src)*/
-
-	//		drawText = func(text string, col color.RGBA, top int) {
-	//			width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
-	//			start := int(16 - width - 1)
-	//
-	//			O4b03b.Font.DrawString(img, start, top, text, col)
-	//		}
-
-	//	if time == nil {
-	//		drawText("N/A", color.RGBA{253, 151, 32, 255}, 2)
-	//	} else {
-
-	//			drawText(fmt.Sprintf("%dm", p.number), color.RGBA{253, 151, 32, 255}, 2)
-	//			drawText(fmt.Sprintf("%.1f", p.f), color.RGBA{253, 151, 32, 255}, 9)
-	//			p.f += 0.5
-	//	}
-	//
-	//		drawText(fmt.Sprintf("%s", p.myText), color.RGBA{69, 175, 249, 255}, 9)
-
-	//	draw.Draw(img, img.Bounds(), border.GetNextFrame(), image.Point{0, 0}, draw.Over)
-
-	// return the image we've created by drawing to it
-	return img, nil
-}
-
-
-
-type RequestPane struct {
-	sync.Mutex
-	parent          *DemoPane
-	activeSince     time.Time
-	active          bool
-	state           string
-	surgeMultiplier float64
-	finished        bool
-
-	product string
-	start   *uber.Location
-	end     *uber.Location
-}
-
-func (p *RequestPane) Gesture(gesture *gestic.GestureMessage) {
-
-//	if gesture.Tap.Active() && time.Since(p.parent.lastTap) > tapInterval {
+	// TODO - can we make draw text non-local function definition?
+	// draw Text
+//	drawText := func(text string, col color.RGBA, top int, offsetY int) {
+//		width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
+//		start := int(16 - width + offsetY)
 //
-//		p.parent.lastTap = time.Now()
-//
-//		if time.Since(p.activeSince) < confirmDeadTime {
-//
-//			log.Infof("Dead tap")
-//
-//			if closeOnDeadTap {
-//				log.Infof("Closing on dead tap")
-//				p.active = false
-//			}
-//
-//			return
-//		}
-//
-//		log.Infof("Request Tap!")
-//
-//		if p.finished { // Tap to close after a failed booking
-//			log.Infof("Closing failed request")
-//			p.active = false
-//			return
-//		}
-//
-//		if p.state == "confirm_booking" {
-//			log.Infof("Booking!")
-//		}
-//
-//	}
-//
-//	if gesture.DoubleTap.Active() && time.Since(p.parent.lastDoubleTap) > tapInterval {
-//		p.parent.lastDoubleTap = time.Now()
-//
-//		log.Infof("Request Double Tap!")
-//
-//		if p.state == "accepted" || p.state == "processing" {
-//			log.Infof("Cancelling!")
-//		}
+//		O4b03b.Font.DrawString(img, start, top, text, col)
 //	}
 
-}
-
-func (p *RequestPane) updateState(state string) {
-	p.Lock()
-	defer p.Unlock()
-
-	log.Infof("Request state: %s", state)
-
-	p.state = state
-
-//	switch state {
-//	case "no_drivers_available":
-//		fallthrough
-//	case "driver_canceled":
-//		fallthrough
-//	case "rider_canceled":
-//		fallthrough
-//	case "error":
-//		p.finished = true
-//	case "completed":
-//		go func() {
-//			time.Sleep(time.Second * 5)
-//			p.active = false
-//		}()
-//	}
-}
-
-func (p *RequestPane) Render() (*image.RGBA, error) {
-	//	log.Infof("Rendering RequestPane (state) %v", p.state)
-
-	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
-
-	stateImg, ok := stateImages[p.state]
-
-	if !ok {
-		panic("Unknown uber request state: " + p.state)
-	}
-
-	drawText := func(text string, col color.RGBA, top int, offsetY int) {
+	// TODO - 2 states with taps to switch - image/text...
+	drawText := func(text string, col color.RGBA, top int) {
 		width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
-		start := int(16 - width + offsetY)
+		start := int(16 - width - 1)
 
 		O4b03b.Font.DrawString(img, start, top, text, col)
 	}
-	//
-	draw.Draw(img, img.Bounds(), stateImg.GetNextFrame(), image.Point{0, 0}, draw.Over)
 
-//	switch p.state {
-//	case "confirm_booking":
-//		var border util.Image
-//
-//		if p.surgeMultiplier > 1 {
-//
-//			stateImg, _ = stateImages["confirm_booking_surge"]
-//
-//			drawText(fmt.Sprintf("%.1fx", p.surgeMultiplier), color.RGBA{69, 175, 249, 255}, 9, -1)
-//
-//			border = imageSurge
-//		} else {
-//			border = imageNoSurge
-//		}
-//
-//		draw.Draw(img, img.Bounds(), border.GetNextFrame(), image.Point{0, 0}, draw.Over)
-//		//		case "accepted":
-//		//			if p.request.getRequest().ETA > 0 {
-//		//				drawText(fmt.Sprintf("%dm", p.request.getRequest().ETA), color.RGBA{253, 151, 32, 255}, 9, 0)
-//		//			}
-//		//			drawText(fmt.Sprintf("%dm", p.request.getRequest()), color.RGBA{69, 175, 249, 255}, 9)
-//	}
+	// TODO - something else here :)
+	if !p.test {
+		drawText("N/A", color.RGBA{253, 151, 32, 255}, 2)
+	} else {
 
-	//	drawText := func(text string, col color.RGBA, top int) {
-	//		width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
-	//		start := int(16 - width - 1)
-	//
-	//		O4b03b.Font.DrawString(img, start, top, text, col)
-	//	}
-	//
-	//	drawText("woot", color.RGBA{69, 175, 249, 255}, 9)
+		drawText(fmt.Sprintf("%dm", p.number), color.RGBA{253, 151, 32, 255}, 2)
+		drawText(fmt.Sprintf("%.1f", p.f), color.RGBA{253, 151, 32, 255}, 9)
+		p.f += 0.5
+	}
 
+	drawText(fmt.Sprintf("%s", p.myText), color.RGBA{69, 175, 249, 255}, 9)
+
+	draw.Draw(img, img.Bounds(), border.GetNextFrame(), image.Point{0, 0}, draw.Over)
+
+	// return the image we've created by drawing to it
 	return img, nil
-}
-
-func (p *RequestPane) IsEnabled() bool {
-	return p.active
 }
