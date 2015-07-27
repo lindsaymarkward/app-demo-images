@@ -19,7 +19,6 @@ import (
 	"github.com/ninjasphere/sphere-go-led-controller/util"
 )
 
-
 var tapInterval = config.MustDuration("uber.tapInterval")
 var updateOnTap = config.MustBool("uber.updateOnTap")
 var introDuration = config.MustDuration("uber.introDuration")
@@ -59,12 +58,9 @@ func loadImages() {
 	}
 }
 
-type UberPane struct {
+type DemoPane struct {
 	siteModel *ninja.ServiceClient
 	site      *model.Site
-
-	times  []*uber.Time
-	prices []*uber.Price
 
 	lastTap       time.Time
 	lastDoubleTap time.Time
@@ -83,38 +79,37 @@ type UberPane struct {
 
 	requestPane *RequestPane
 
+	// TODO: can data be stored in app, not pane? - Just pass app to NewDemoPane, I think
 	myText string
-	test bool
+	test   bool
 	number int
-	f float64
+	f      float64
 }
 
-func NewDemoPane(conn *ninja.Connection) *UberPane {
+func NewDemoPane(conn *ninja.Connection) *DemoPane {
 
-	pane := &UberPane{
+	pane := &DemoPane{
 		siteModel: conn.GetServiceClient("$home/services/SiteModel"),
 		lastTap:   time.Now(),
-		number: 0,
-		f: 0.0,
+		number:    0,
+		f:         0.0,
 	}
 
-	//
 	pane.test = false
 	pane.requestPane = &RequestPane{
 		parent: pane,
 	}
 
+	// TODO: figure these timers out - how do they work?
+
 	pane.visibleTimeout = time.AfterFunc(0, func() {
+		// TODO: keepAwake is unused, I think
 		pane.keepAwake = false
 		pane.visible = false
 	})
 
 	pane.introTimeout = time.AfterFunc(0, func() {
 		pane.intro = false
-	})
-
-	pane.staleDataTimeout = time.AfterFunc(0, func() {
-		pane.times, pane.prices = nil, nil
 	})
 
 	pane.updateTimer = time.AfterFunc(0, func() {
@@ -134,33 +129,28 @@ func NewDemoPane(conn *ninja.Connection) *UberPane {
 		pane.keepAwake = false
 	})
 
-	go pane.Start()
-
 	return pane
 }
 
-func (p *UberPane) Start() {
-	log.Infof("Start() called")
-}
-
-func (p *UberPane) UpdateData(once bool) error {
-		if !once && p.visible {
-			p.updateTimer.Reset(updateInterval)
-		}
+func (p *DemoPane) UpdateData(once bool) error {
+	if !once && p.visible {
+		p.updateTimer.Reset(updateInterval)
+	}
 	if p.test {
-		p.myText = time.ANSIC
+		//		p.myText = time.ANSIC
 		p.myText = "Test"
 	} else {
 		p.myText = ":)"
 	}
 
-//	p.number++
+	//	p.number++
 	p.f += 2.0
 
 	return nil
 }
 
-func (p *UberPane) Gesture(gesture *gestic.GestureMessage) {
+// Gesture is called by the system when the LED matrix receives any kind of gesture
+func (p *DemoPane) Gesture(gesture *gestic.GestureMessage) {
 
 	if p.requestPane.IsEnabled() {
 		p.requestPane.Gesture(gesture)
@@ -174,26 +164,25 @@ func (p *UberPane) Gesture(gesture *gestic.GestureMessage) {
 
 		p.number++
 		p.number %= len(states)
-
+		// TODO: state for main pane... remove requestPane altogether
 		p.requestPane.updateState(states[p.number])
 
-//		p.requestPane.updateState("in_progress")
 		p.test = true
 
 		if updateOnTap {
 			go p.UpdateData(true)
 		}
 
-//		img := image.NewRGBA(image.Rect(0, 0, 16, 16))
-//
-//		drawText := func(text string, col color.RGBA, top int) {
-//			width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
-//			start := int(16 - width - 1)
-//
-//			O4b03b.Font.DrawString(img, start, top, text, col)
-//		}
-//
-//		drawText("N/A", color.RGBA{253, 151, 32, 255}, 2)
+		//		img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+		//
+		//		drawText := func(text string, col color.RGBA, top int) {
+		//			width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
+		//			start := int(16 - width - 1)
+		//
+		//			O4b03b.Font.DrawString(img, start, top, text, col)
+		//		}
+		//
+		//		drawText("N/A", color.RGBA{253, 151, 32, 255}, 2)
 		//			} else {
 		//				drawText(fmt.Sprintf("%dm", 3), color.RGBA{253, 151, 32, 255}, 2)
 		//			}
@@ -207,15 +196,14 @@ func (p *UberPane) Gesture(gesture *gestic.GestureMessage) {
 
 		log.Infof("Double Tap!")
 
-//		p.requestPane.updateState("completed")
 		p.test = false
-//		p.number = 0
+		//		p.number = 0
 		go p.UpdateData(true)
 	}
 
 }
 
-func (p *UberPane) KeepAwake() bool {
+func (p *DemoPane) KeepAwake() bool {
 	if p.requestPane.IsEnabled() {
 		return true
 	}
@@ -224,19 +212,15 @@ func (p *UberPane) KeepAwake() bool {
 	return true
 }
 
-func (p *UberPane) Locked() bool {
-	if p.requestPane.IsEnabled() {
-		return p.requestPane.Locked()
-	}
-
-	return false
+// IsEnabled is needed as it's part of the interface
+func (p *DemoPane) IsEnabled() bool {
+	return true
 }
 
+// Render is called by the system repeatedly when the pane is visible
+func (p *DemoPane) Render() (*image.RGBA, error) {
 
-
-func (p *UberPane) Render() (*image.RGBA, error) {
-
-//	log.Infof("Rendering UberPane (visible?) %v", p.visible)
+	//	log.Infof("Rendering UberPane (visible?) %v", p.visible)
 	p.visibleTimeout.Reset(visibleTimeout)
 
 	if p.requestPane.IsEnabled() {
@@ -252,48 +236,32 @@ func (p *UberPane) Render() (*image.RGBA, error) {
 		go p.UpdateData(false)
 	}
 
-//	if p.intro || p.times == nil {
-	if p.intro  {
-//		log.Infof("intro, getnextframe returning...")
+	//	if p.intro || p.times == nil {
+	if p.intro {
+		//		log.Infof("intro, getnextframe returning...")
 		return imageLogo.GetNextFrame(), nil
 	}
 
-
+	// img here is an empty 16*16 RGBA image for the Draw function to draw into
 	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
 
 	stateImg, ok := images[states[p.number]]
-//	log.Infof("rendering %s", states[p.number])
+	//	log.Infof("rendering %s", states[p.number])
 
 	if !ok {
-		panic("Unknown uber request state: ")
+		panic("Unknown state")
 	}
 
-//	drawText := func(text string, col color.RGBA, top int, offsetY int) {
-//		width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
-//		start := int(16 - width + offsetY)
-//
-//		O4b03b.Font.DrawString(img, start, top, text, col)
-//	}
-//	//
+	//	drawText := func(text string, col color.RGBA, top int, offsetY int) {
+	//		width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
+	//		start := int(16 - width + offsetY)
+	//
+	//		O4b03b.Font.DrawString(img, start, top, text, col)
+	//	}
+	// Draw (built-in Go function) draws the frame from stateImg into the img 'image' starting at 4th parameter, "Over" the top
 	draw.Draw(img, img.Bounds(), stateImg.GetNextFrame(), image.Point{0, 0}, draw.Over)
 
-
-
-	//	time, price := p.GetProduct(uberProduct)
-//	var border util.Image
-
-	//	if price == nil {
-	//		spew.Dump(p.prices)
-	//		log.Fatalf("Could not find price for product %s", uberProduct)
-	//	}
-	//
-	//	if price.SurgeMultiplier > 1 {
-	//		border = imageSurge
-	//	} else {
-//	border = imageNoSurge
-	//	}
-
-//	img = image.NewRGBA(image.Rect(0, 0, 16, 16))
+	//	img = image.NewRGBA(image.Rect(0, 0, 16, 16))
 	/*draw.Draw(frame, frame.Bounds(), &image.Uniform{color.RGBA{
 		R: 0,
 		G: 0,
@@ -301,40 +269,34 @@ func (p *UberPane) Render() (*image.RGBA, error) {
 		A: 255,
 	}}, image.ZP, draw.Src)*/
 
-//		drawText = func(text string, col color.RGBA, top int) {
-//			width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
-//			start := int(16 - width - 1)
-//
-//			O4b03b.Font.DrawString(img, start, top, text, col)
-//		}
+	//		drawText = func(text string, col color.RGBA, top int) {
+	//			width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
+	//			start := int(16 - width - 1)
+	//
+	//			O4b03b.Font.DrawString(img, start, top, text, col)
+	//		}
 
 	//	if time == nil {
 	//		drawText("N/A", color.RGBA{253, 151, 32, 255}, 2)
 	//	} else {
 
-//			drawText(fmt.Sprintf("%dm", p.number), color.RGBA{253, 151, 32, 255}, 2)
-//			drawText(fmt.Sprintf("%.1f", p.f), color.RGBA{253, 151, 32, 255}, 9)
-//			p.f += 0.5
+	//			drawText(fmt.Sprintf("%dm", p.number), color.RGBA{253, 151, 32, 255}, 2)
+	//			drawText(fmt.Sprintf("%.1f", p.f), color.RGBA{253, 151, 32, 255}, 9)
+	//			p.f += 0.5
 	//	}
 	//
-//		drawText(fmt.Sprintf("%s", p.myText), color.RGBA{69, 175, 249, 255}, 9)
+	//		drawText(fmt.Sprintf("%s", p.myText), color.RGBA{69, 175, 249, 255}, 9)
 
-//	draw.Draw(img, img.Bounds(), border.GetNextFrame(), image.Point{0, 0}, draw.Over)
+	//	draw.Draw(img, img.Bounds(), border.GetNextFrame(), image.Point{0, 0}, draw.Over)
 
 	return img, nil
 }
 
-func (p *UberPane) IsEnabled() bool {
-	return true
-}
 
-func (p *UberPane) IsDirty() bool {
-	return true
-}
 
 type RequestPane struct {
 	sync.Mutex
-	parent          *UberPane
+	parent          *DemoPane
 	activeSince     time.Time
 	active          bool
 	state           string
@@ -420,56 +382,56 @@ func (p *RequestPane) Locked() bool {
 }
 
 func (p *RequestPane) Render() (*image.RGBA, error) {
-//	log.Infof("Rendering RequestPane (state) %v", p.state)
+	//	log.Infof("Rendering RequestPane (state) %v", p.state)
 
 	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
 
-		stateImg, ok := images[p.state]
+	stateImg, ok := images[p.state]
 
-		if !ok {
-			panic("Unknown uber request state: " + p.state)
-		}
+	if !ok {
+		panic("Unknown uber request state: " + p.state)
+	}
 
-		drawText := func(text string, col color.RGBA, top int, offsetY int) {
-			width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
-			start := int(16 - width + offsetY)
+	drawText := func(text string, col color.RGBA, top int, offsetY int) {
+		width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
+		start := int(16 - width + offsetY)
 
-			O4b03b.Font.DrawString(img, start, top, text, col)
-		}
+		O4b03b.Font.DrawString(img, start, top, text, col)
+	}
 	//
-		draw.Draw(img, img.Bounds(), stateImg.GetNextFrame(), image.Point{0, 0}, draw.Over)
+	draw.Draw(img, img.Bounds(), stateImg.GetNextFrame(), image.Point{0, 0}, draw.Over)
 
-		switch p.state {
-		case "confirm_booking":
-			var border util.Image
+	switch p.state {
+	case "confirm_booking":
+		var border util.Image
 
-			if p.surgeMultiplier > 1 {
+		if p.surgeMultiplier > 1 {
 
-				stateImg, _ = images["confirm_booking_surge"]
+			stateImg, _ = images["confirm_booking_surge"]
 
-				drawText(fmt.Sprintf("%.1fx", p.surgeMultiplier), color.RGBA{69, 175, 249, 255}, 9, -1)
+			drawText(fmt.Sprintf("%.1fx", p.surgeMultiplier), color.RGBA{69, 175, 249, 255}, 9, -1)
 
-				border = imageSurge
-			} else {
-				border = imageNoSurge
-			}
-
-			draw.Draw(img, img.Bounds(), border.GetNextFrame(), image.Point{0, 0}, draw.Over)
-//		case "accepted":
-//			if p.request.getRequest().ETA > 0 {
-//				drawText(fmt.Sprintf("%dm", p.request.getRequest().ETA), color.RGBA{253, 151, 32, 255}, 9, 0)
-//			}
-//			drawText(fmt.Sprintf("%dm", p.request.getRequest()), color.RGBA{69, 175, 249, 255}, 9)
+			border = imageSurge
+		} else {
+			border = imageNoSurge
 		}
 
-//	drawText := func(text string, col color.RGBA, top int) {
-//		width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
-//		start := int(16 - width - 1)
-//
-//		O4b03b.Font.DrawString(img, start, top, text, col)
-//	}
-//
-//	drawText("woot", color.RGBA{69, 175, 249, 255}, 9)
+		draw.Draw(img, img.Bounds(), border.GetNextFrame(), image.Point{0, 0}, draw.Over)
+		//		case "accepted":
+		//			if p.request.getRequest().ETA > 0 {
+		//				drawText(fmt.Sprintf("%dm", p.request.getRequest().ETA), color.RGBA{253, 151, 32, 255}, 9, 0)
+		//			}
+		//			drawText(fmt.Sprintf("%dm", p.request.getRequest()), color.RGBA{69, 175, 249, 255}, 9)
+	}
+
+	//	drawText := func(text string, col color.RGBA, top int) {
+	//		width := O4b03b.Font.DrawString(img, 0, 8, text, color.Black)
+	//		start := int(16 - width - 1)
+	//
+	//		O4b03b.Font.DrawString(img, start, top, text, col)
+	//	}
+	//
+	//	drawText("woot", color.RGBA{69, 175, 249, 255}, 9)
 
 	return img, nil
 }
