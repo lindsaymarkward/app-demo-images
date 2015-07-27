@@ -1,0 +1,1 @@
+DEBUG=* ./app-demo-images --mqtt.host=ninjasphere.local --mqtt.port=1883 --serial=4LWGMW2BPCQAK --led.host=ninjasphere.local

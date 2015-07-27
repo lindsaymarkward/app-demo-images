@@ -1,0 +1,10 @@
+{
+  "id": "lindsaymarkward.app-demo-images",
+  "name": "Demo Images Application",
+  "version": "0.1.0",
+  "description": "Demo. Adds a pane to the LED matrix.",
+  "author": "Lindsay Ward <lindsay.ward@jcu.edu.au>",
+  "keywords": ["demo", "pane", "led", "images"],
+  "license": "MIT",
+  "files": ["images"]
+}
