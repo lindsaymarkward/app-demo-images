@@ -7,7 +7,7 @@ Ninja Sphere Application DEMO of adding a pane to the LED Matrix for displaying 
  - Tap once on the left/west side for the previous image
  - Double tap to switch between image and text displaying
  - East/West taps still work in text mode
- - Put whatever 16*16 GIF or PNG images you like in the `images` folder
+ - Put whatever 16*16 GIF or PNG images you like in the `images` folder (before you run it)
 
 Run with something like:
 
