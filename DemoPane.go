@@ -100,7 +100,7 @@ func (p *DemoPane) Gesture(gesture *gestic.GestureMessage) {
 		log.Infof("Tap! %v", lastLocation)
 
 		// change between images - right or left
-		if lastLocation.East {
+		if lastLocation.East && lastLocation.West {
 			p.imageIndex++
 			p.imageIndex %= len(stateImageNames)
 		} else {
