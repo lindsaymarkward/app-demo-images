@@ -8,6 +8,7 @@ import (
 
 var log = logger.GetLogger(info.ID)
 
+// these values come from the command line parameters when run (see README) or from the Sphere system
 var host = config.String("localhost", "led.host")
 var port = config.Int(3115, "led.remote.port")
 
