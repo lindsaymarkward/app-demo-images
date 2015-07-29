@@ -1,10 +1,10 @@
-## Uber Pane
-Ninja Sphere - Application that adds an Uber pane to the LED Matrix
+## app-demo-images
+Ninja Sphere Application DEMO of adding a pane to the LED Matrix for displaying images and text and responding to tap gestures
 
-To use you'll need a config.json with the app secrets.
+Tap once on the right/east side of the spheramid to advance to the next image
+Tap once on the left/west side for the previous image
+Double tap to switch between image and text displaying
+East/West taps still work in text mode
 
-You probably want to run it from your mac like this:
-
-```go build && DEBUG=* ./app-uber --led.host elliotsphere2.local --mqtt.host elliotsphere2.local```
-
-You can specify a latitude/longitude with ```--latitude=-33.86 --longitude=-151.20```
+Run with something like:
+`DEBUG=* ./app-demo-images --mqtt.host=ninjasphere.local --mqtt.port=1883 --serial=yourSerial# --led.host=ninjasphere.local`

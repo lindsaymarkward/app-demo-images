@@ -14,7 +14,7 @@ var info = ninja.LoadModuleInfo("./package.json")
 
 // init is a Go standard that runs first
 func init() {
-	// TODO: put images in app, get pane to be able to see app's data
+	// TODO: put images in app (maybe not), get pane to be able to see app's data
 	loadImages()
 }
 

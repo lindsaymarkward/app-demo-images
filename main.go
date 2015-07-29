@@ -6,7 +6,7 @@ import (
 	"github.com/ninjasphere/go-ninja/support"
 )
 
-var log = logger.GetLogger("uber-pane")
+var log = logger.GetLogger(info.ID)
 
 var host = config.String("localhost", "led.host")
 var port = config.Int(3115, "led.remote.port")
