@@ -4,8 +4,6 @@ package main
 
 import (
 	"fmt"
-	"net"
-	"os"
 
 	"github.com/ninjasphere/go-ninja/api"
 	"github.com/ninjasphere/go-ninja/support"
@@ -36,25 +34,8 @@ func (a *App) Start(cfg *RuntimeConfig) error {
 	// The pane must implement the remote.pane interface
 	pane := NewDemoPane(a)
 
-	// Connect to the LED controller remote pane interface via TCP
-	log.Infof("Connecting to LED controller...")
-	tcpAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", host, port))
-	if err != nil {
-		println("ResolveTCPAddr failed:", err.Error())
-		os.Exit(1)
-	}
-
-	// This creates a TCP connection, conn
-	conn, err := net.DialTCP("tcp", nil, tcpAddr)
-	if err != nil {
-		println("DialTCP failed:", err.Error())
-		os.Exit(1)
-	}
-
-	log.Infof("Connected. Now making new matrix...")
-
-	// Export our pane over the TCP connection we just made
-	a.led = remote.NewMatrix(pane, conn)
+	// Export our pane over TCP
+	a.led = remote.NewTCPMatrix(pane, fmt.Sprintf("%s:%d", host, port))
 
 	// TODO: try a second NewMatrix - see if we can swipe between them
 
